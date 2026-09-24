@@ -2,5 +2,45 @@
 title: "zhkingProjectOne"
 format: html
 ---
+# Part Zero: The Data
+
+There's a lot of variables to work with here. We are specifically working with:
+
+- AGEP : Age
+- FER: Gave birth to a child in the past year
+- HHL: Household Language
+- GASP: Gas Cost
+- GRPIP: Gross Rent as Percentage of Household Income
+- JWAP: Time of Arrival at Work
+- JWMNP: Travel Time to Work
+- JWRIP: Vehicle Occupancy
+- PWGTP: Person Weight
+- SCH: School Enrollment
+- SCHL: Educational Attainment
+- SEX: Sex
+
+And for geography:
+
+- ST/STATE: State
+- Region: Quadrant of the US
+- Division: Region of the Quadrant of the US
+
 
 # Part One: Data Processing
+
+## Parsing Variable Values
+
+## Parsing API Data
+
+## Combining Years
+
+
+# Part Two: Writing a Generic Function for Summarizing
+
+## Generic Functions
+
+## Numerical Summaries
+
+## Graphical Summaries 
+
+# Investigation
