@@ -71,7 +71,7 @@ var_list_21 <- get_vars(l21)
 var_list_22 <- get_vars(l22)
 var_list_23 <- get_vars(l23)
 var_list_24 <- get_vars(l24)
-var_lists <- list(var_list_21,var_list_22,var_list_23,var_list_24)
+var_lists <- list("y2021"=var_list_21,"y2022"=var_list_22,"y2023"=var_list_23,"y2024"=var_list_24)
 ```
 
 Finally, we save the data and remove extraneous R objects.
