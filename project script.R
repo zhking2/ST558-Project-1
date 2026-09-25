@@ -27,38 +27,50 @@ remove(api_ex,raw_stats,parsed_stats)
 
 
 
-api_helper <- function(YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMNP=FALSE, SEX=TRUE, HHL=FALSE, SCH=FALSE, SCHL=FALSE){
+api_helper <- function(YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMNP=FALSE, 
+                       SEX=TRUE, HHL=FALSE, SCH=FALSE, SCHL=FALSE, GEOG="ST",GSUBSET="NULL"){
+  
   if(!is.integer(vec) | !is.logical(c(AGEP,GRPIP,JWAP,JWDP,JWMNP,HHL,SCH,SCHL))){
-    stop("Wrong Kind of Input")
-  }
+    stop("Wrong Kind of Input")}
   if(!YEAR %in% c(2021,2022,2023,2024)) {
-    stop("Year Not in Range")
+    stop("Year Not in Range")}
+  if(!YEAR %in% c(2023,2024) & GEOG == "ST"){
+    GEOG <- "STATE"}
+  if(!YEAR %in% c(2021,2022) & GEOG == "STATE"){
+    GEOG <- "ST"}
+  if(!GEOG %in% c("ST","STATE","REGION","DIVISION")){
+    stop("Not a Geography Option")}
+  if(GSUBSET == "NULL"){
+    ifelse(GEOG %in% c("ST","STATE"),GSUBSET<-"Alabama/AL",
+           ifelse(GEOG == "REGION",,
+                  ifelse(GEOG == "DIVISION",)))
   }
+  
   baseURL <- paste0("https://api.census.gov/data/",as.character(YEAR),"/acs/acs1/pums")
-  baseVARS <- c("PWGTP","GASP","FER")
-  specVARS <-c(AGEP = "AGEP", GRPIP = "GRPIP", JWAP = "JWAP", JWDP = "JWDP", JWMNP = "JWMNP", SEX = "SEX", HHL="HHL", SCH="SCH", SCHL="SCHL")
-  selected_specVARS <- specVARS[c(AGEP, GRPIP, JWAP, JWDP, JWMNP,SEX,HHL,SCH,SCHL)]
+  
+  baseVars <- c("PWGTP","GASP","FER")
+  specVars <-c(AGEP = "AGEP", GRPIP = "GRPIP", JWAP = "JWAP", JWDP = "JWDP", JWMNP = "JWMNP", 
+               SEX = "SEX", HHL="HHL", SCH="SCH", SCHL="SCHL")
+  selectedSpecVars <- specVars[c(AGEP, GRPIP, JWAP, JWDP, JWMNP,SEX,HHL,SCH,SCHL)]
+  realVars <- paste(c(baseVars, selected_specVars), collapse = ",")
   
   request <- GET(
     url = base_url,
     query = list(
-      get = baseVARS,
-      `for` = "state:*",
-      SCHL = "24",
+      get = realVars,
+      `for` = GEOG,
       key = census_key
     )
   )
   
 }
 
-AGEP=T
-GRPIP=T
-JWAP=T
-JWDP=T
-JWMNP=T
 
+check<-var_lists[[1]]
+states<-check$ST[4]
+values<-states$values
+stateCodes<-unlist(values$item)
+item<-values$item
 
-
-
-
-
+stateCodes<-as_tibble(stateCodes)|>
+  arrange()
