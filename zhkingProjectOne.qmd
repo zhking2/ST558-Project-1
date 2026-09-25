@@ -2,6 +2,15 @@
 title: "zhkingProjectOne"
 format: html
 ---
+Loading packages:
+```{r}
+library(tidyverse)
+library(httr)
+library(jsonlite)
+library(purrr)
+```
+
+
 # Part Zero: The Data
 
 There's a lot of variables to work with here. We are specifically working with:
@@ -29,6 +38,33 @@ And for geography:
 # Part One: Data Processing
 
 ## Parsing Variable Values
+
+We start by pulling a list of variables from the API, for each year. 
+
+```{r}
+
+v21 <- "https://api.census.gov/data/2021/acs/acs1/pums/variables.json"
+var21_return <- httr::GET(v21)
+v21_parsed <- fromJSON(rawToChar(var21_return$content))
+remove(v21,var21_return)
+var21<-v21_parsed$variables
+var21<-var21[c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP", "FER", "HHL", "SCH", "SCHL", "SEX", "ST", "REGION", "DIVISION")]
+
+```
+
+```{r}
+get_vars <- function(link){
+  var_return <- httr::GET(link)
+  var_parsed <- fromJSON(rawToChar(var_return$content))
+  vars_llist <- var_parsed$variables
+  vars_fin <- vars_llist[c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP", "FER", "HHL", "SCH", "SCHL", "SEX", "ST","STATE", "REGION", "DIVISION")]
+}
+
+
+
+```
+
+
 
 ## Parsing API Data
 
