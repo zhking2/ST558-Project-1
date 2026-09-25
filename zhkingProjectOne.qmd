@@ -9,6 +9,7 @@ library(httr)
 library(jsonlite)
 library(purrr)
 library(readr)
+library(lubridate)
 ```
 
 
@@ -89,25 +90,25 @@ First, we'll do a test process using the example URL from the rubric.
 
 ```{r}
 
-census_key<-readRDS("../censusKey.rds")
+censusKey<-readRDS("../censusKey.rds")
 base_url <- "https://api.census.gov/data/2024/acs/acs1/pums"
 
 api_ex <- GET(
   url = base_url,
   query = list(
-    get = "SEX,PWGTP,MAR",
+    get = "SEX,PWGTP,JWAP",
     `for` = "state:*",
     SCHL = "24",
-    key = census_key
+    key = censusKey
   )
 )
 raw_stats <- content(api_ex, "text", encoding = "UTF-8")
 parsed_stats <- fromJSON(raw_stats)
-example_stats <- as_tibble(parsed_stats[-1,,drop = FALSE])
+example_stats <- as_tibble(parsed_stats)
+colnames(example_stats) <- example_stats[1, ]
+example_stats <- example_stats[-1, , drop = FALSE]
+
 remove(api_ex,raw_stats,parsed_stats)
-
-
-
 ```
 
 A short aside: we need the list of geography codes, so I'll make a helper function to do that for me.
@@ -128,6 +129,70 @@ grabCodes<-function(){
   return(codes)
 }
 codes<-grabCodes()
+```
+
+We also need a helper function to turn the times from JWAP into the midpoints. As mentioned in the rubric, I did use a LLm for this.
+
+```{r}
+get_time_midpoint <- function(time_ranges, format_12hr = TRUE) {
+  # 1. Standardize "p.m." -> "PM" and "a.m." -> "AM"
+  cleaned <- gsub("p\\.m\\.", "PM", time_ranges, ignore.case = TRUE)
+  cleaned <- gsub("a\\.m\\.", "AM", cleaned, ignore.case = TRUE)
+  
+  # 2. Split start and end
+  split_times <- strsplit(cleaned, "\\s+to\\s+")
+  start_str <- sapply(split_times, `[`, 1)
+  end_str   <- sapply(split_times, `[`, 2)
+  
+  # 3. Parse with anchored dummy date
+  today <- Sys.Date()
+  start_time <- as.POSIXct(paste(today, start_str), format = "%Y-%m-%d %I:%M %p")
+  end_time   <- as.POSIXct(paste(today, end_str),   format = "%Y-%m-%d %I:%M %p")
+  
+  # 4. Handle overnight boundary crossover
+  overnight <- !is.na(start_time) & !is.na(end_time) & (end_time < start_time)
+  end_time[overnight] <- end_time[overnight] + (24 * 3600)
+  
+  # 5. Compute midpoint
+  midpoint <- start_time + (end_time - start_time) / 2
+  
+  # 6. Format output (12-hour AM/PM vs 24-hour)
+  if (format_12hr) {
+    return(format(midpoint, "%I:%M %p")) # Returns e.g. "06:37 PM"
+  } else {
+    return(format(midpoint, "%H:%M"))    # Returns e.g. "18:37"
+  }
+}
+
+# Now we want to apply this to JWAP potential values.
+
+get_JWAPPED<-function(){
+  check<-var_lists[[1]]
+  jwap1<-check$JWAP
+  values<-jwap1$values
+  JWAP<-unlist(values$item)
+  ids<-names(JWAP)
+  JWAP<-cbind("JWAP"=ids,"times"=JWAP)
+  JWAP[,2]<-get_time_midpoint(JWAP[,2])
+  JWAP<-as_tibble(JWAP)
+  return(JWAP)
+}
+
+get_JWDPPED<-function(){
+  check<-var_lists[[1]]
+  jwdp1<-check$JWDP
+  values<-jwdp1$values
+  JWDP<-unlist(values$item)
+  ids<-names(JWDP)
+  JWDP<-cbind("JWDP"=ids,"times"=JWDP)
+  JWDP[,2]<-get_time_midpoint(JWDP[,2])
+  JWDP<-as_tibble(JWDP)
+  return(JWDP)
+}
+
+JWAPvals<-get_JWAPPED()
+JWDPvals<-get_JWDPPED()
+
 ```
 
 
@@ -186,7 +251,7 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
   # We should now finally be ready to actually call the API
   
   request <- GET(
-    url = base_url,
+    url = baseURL,
     query = list(
       get = realVars,
       `for` = realGeog,
@@ -195,9 +260,24 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
   )
   raw_stats <- content(request, "text", encoding = "UTF-8")
   parsed_stats <- fromJSON(raw_stats)
-  example_stats <- as_tibble(parsed_stats)
+  un_stats <- as_tibble(parsed_stats)
+  colnames(un_stats) <- un_stats[1, ]
+  un_stats <- un_stats[-1, , drop = FALSE]
+  un_stats<-un_stats |>
+    mutate(across(c(PWGTP, GASP, AGEP, GRPIP,JWMNP), as.double))|>
+    mutate(across(c(FER,SEX,HHL,SCH,SCHL,JWAP,state), as.factor))|>
+    left_join(JWAPvals, by = "JWAP") |>
+    mutate(JWAP = times)|>
+    select(-times)|>
+    left_join(JWDPvals, by = "JWDP") |>
+    mutate(JWDP = times)|>
+    select(-times)
   
 }
+
+
+
+
 ```
 
 
