@@ -51,6 +51,7 @@ l23<-"https://api.census.gov/data/2023/acs/acs1/pums/variables.json"
 l24<-"https://api.census.gov/data/2024/acs/acs1/pums/variables.json"
 
 ```
+
 Next, we create a function that pulls our desired list of variables out of the API call, taking into account the ST/STATE difference between years.
 
 ```{r}
@@ -59,9 +60,11 @@ get_vars <- function(link){
   var_return <- httr::GET(link)
   var_parsed <- fromJSON(rawToChar(var_return$content))
   vars_llist <- var_parsed$variables
-  vars_fin <- vars_llist[c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP", "FER", "HHL", "SCH", "SCHL", "SEX", "ST","STATE", "REGION", "DIVISION")]
-  vars_fin[!sapply(vars_fin,is.null)]
-
+  target_vars <- c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP", "FER", "HHL", "SCH", "SCHL", "SEX", "ST","STATE", "REGION", "DIVISION")
+  available_vars <- intersect(target_vars, names(vars_llist))
+  vars_fin <- vars_llist[available_vars]
+  
+  return(vars_fin[!sapply(vars_fin, is.null)])
 }
 ```
 
@@ -111,7 +114,7 @@ example_stats <- example_stats[-1, , drop = FALSE]
 remove(api_ex,raw_stats,parsed_stats)
 ```
 
-A short aside: we need the list of geography codes, so I'll make a helper function to do that for me.
+A short aside: we need the list of geography codes, so I'll make a helper function to do that for me, without clogging up my R environment.
 
 ```{r}
 grabCodes<-function(){
@@ -125,13 +128,13 @@ grabCodes<-function(){
   divisions<-check$DIVISION
   values<-divisions$values
   divisionCodes<-values$item
-  codes<-list("regionCodes"=names(regionCodes),"stateCodes"=names(stateCodes),"divisionCodes"=names(divisionCodes))
-  return(codes)
+  geog_codes<-list("regionCodes"=names(regionCodes),"stateCodes"=names(stateCodes),"divisionCodes"=names(divisionCodes))
+  return(geog_codes)
 }
-codes<-grabCodes()
+geog_codes<-grabCodes()
 ```
 
-We also need a helper function to turn the times from JWAP into the midpoints. As mentioned in the rubric, I did use a LLm for this.
+We also need a helper function to turn the times from JWAP/JDAP into the midpoints. As mentioned in the rubric, I did use a LLM for this. I then created functions to translate the JWAP/JDAP data later, without clogging up my environment.
 
 ```{r}
 get_time_midpoint <- function(time_ranges, format_12hr = TRUE) {
@@ -203,19 +206,20 @@ Next, we'll turn the example into a helper function that can do the same thing f
 api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMNP=FALSE, 
                        SEX=TRUE, HHL=FALSE, SCH=FALSE, SCHL=FALSE, GEOG="ST",GSUBSET=99999){
   
-  # First Step is to make sure that all of the inputs are correct.
+  # FIRST STEP: make sure that all of the inputs are correct.
   
-  if (!is.numeric(GSUBSET) || 
-      !all(is.logical(c(AGEP, GRPIP, JWAP, JWDP, JWMNP, SEX, HHL, SCH, SCHL))) || 
-      !all(is.character(c(GEOG, KEY)))) {
-    stop("Wrong Kind of Input")
-  }
+  # this if clause is checking that the inputs are the correct type
+  if (!all(is.logical(c(AGEP, GRPIP, JWAP, JWDP, JWMNP, SEX, HHL, SCH, SCHL))) || 
+      !all(is.character(c(GEOG, KEY,GSUBSET)))) {
+    stop("Wrong Kind of Input")}
+  # this one is checking if the year is one of the ones we're working with
   if(!YEAR %in% c(2021,2022,2023,2024)) {
     stop("Year Not in Range")}
+  # this is checking to make sure that the geography level is one that is possible
   if(!GEOG %in% c("ST","STATE","REGION","DIVISION")){
     stop("Not a Geography Option")}
   
-  # Next, I need to fix the whole ST/STATE issue.
+  # Next, I need to fix the whole ST/STATE issue, and ensure that the level matches the year.
   
   if(!YEAR %in% c(2023,2024) & GEOG == "ST"){
     GEOG <- "STATE"}
@@ -224,13 +228,11 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
   
   # Here, I'm checking to make sure all of the geography sub-setting lines up.
   
-  GSUBSET <- as.character(GSUBSET)
-  if(GEOG %in% c("ST","STATE") & !GSUBSET %in% codes$stateCodes){
-    GSUBSET<-"01"}
-  if(GEOG %in% c("REGION") & !GSUBSET %in% codes$regionCodes){
-    GSUBSET<-"1"}
-  if(GEOG %in% c("DIVISION") & !GSUBSET %in% codes$divisionCodes){
-    GSUBSET<-"1"}
+  # basically, if the user specifies all, or chooses something that isn't an option, the function defaults to no subsetting.
+  if (GSUBSET == "All" | (GEOG %in% c("ST","STATE") & !GSUBSET %in% geog_codes$stateCodes) | (GEOG %in% c("REGION") & !GSUBSET %in% geog_codes$regionCodes) | (GEOG %in% c("DIVISION") & !GSUBSET %in% geog_codes$divisionCodes)) {
+    realGeog <- paste0(tolower(GEOG),":*")} # this sets up the geography line of the call, without sub setting
+  else {realGeog <- paste0(tolower(GEOG),":",GSUBSET)} # if the subset matches the geography, then the geography line will add the subsetting
+  
   
   # This is the baseline URL without anything applied yet.
 
@@ -238,17 +240,14 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
   
   # Now I'm setting up the default variables, and adding the selected variables to the pile.
   
-  baseVars <- c("PWGTP","GASP","FER")
+  baseVars <- c("PWGTP","GASP","FER") # These 3 variables will always be added. PWGTP is given by the rubric, and I'm choosing gasp and fer as my numerical and categorical options.
   specVars <-c(AGEP = "AGEP", GRPIP = "GRPIP", JWAP = "JWAP", JWDP = "JWDP", JWMNP = "JWMNP", 
                SEX = "SEX", HHL="HHL", SCH="SCH", SCHL="SCHL")
   selectedSpecVars <- specVars[c(AGEP, GRPIP, JWAP, JWDP, JWMNP,SEX,HHL,SCH,SCHL)]
   realVars <- paste(c(baseVars, selectedSpecVars), collapse = ",")
   
-  # Here's where I'm making the geography line:
   
-  realGeog <- paste0(tolower(GEOG),":",GSUBSET)
-  
-  # We should now finally be ready to actually call the API
+  # We should now finally be ready to actually call the API, and turn the results into a tibble. 
   
   request <- GET(
     url = baseURL,
@@ -261,23 +260,36 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
   raw_stats <- content(request, "text", encoding = "UTF-8")
   parsed_stats <- fromJSON(raw_stats)
   un_stats <- as_tibble(parsed_stats)
+  
+  # fixing the column names
   colnames(un_stats) <- un_stats[1, ]
   un_stats <- un_stats[-1, , drop = FALSE]
-  un_stats<-un_stats |>
-    mutate(across(c(PWGTP, GASP, AGEP, GRPIP,JWMNP), as.double))|>
-    mutate(across(c(FER,SEX,HHL,SCH,SCHL,JWAP,state), as.factor))|>
-    left_join(JWAPvals, by = "JWAP") |>
-    mutate(JWAP = times)|>
-    select(-times)|>
+
+  # Here I'm joining the output with my JWAPvals tibble, so that I can swap out the time codes for the actual times
+  if ("JWAP" %in% names(un_stats)) {
+  un_stats <- un_stats |>
+    left_join(JWAPvals, by = "JWAP") |> 
+    mutate(JWAP = times) |> # here's where I do that swap
+    select(-times)}    # now I'm removing the leftovers of the join
+
+  # and now I repeat the process for JWDP, which unfortunately has different values from JWAP
+  if ("JWDP" %in% names(un_stats)) {
+  un_stats <- un_stats |>
     left_join(JWDPvals, by = "JWDP") |>
-    mutate(JWDP = times)|>
-    select(-times)
+    mutate(JWDP = times) |>
+    select(-times)}
+    
+  # Here's where I'm editing the output to ensure all of the variables are the right types.
   
+  un_stats<-un_stats |>
+  mutate(across(any_of(c("PWGTP", "GASP", "AGEP", "GRPIP", "JWMNP")), as.double)) |> # this is setting the numerical variables to doubles
+  mutate(across(any_of(c("FER", "SEX", "HHL", "SCH", "SCHL", "JWAP", "JWDP", "ST", "STATE", "REGION", "DIVISION", "state", "region", "division")), as.factor)) # this is setting the categorical variables to factors
+  
+  class(un_stats) <- c("census", class(un_stats))
+  
+  return(un_stats)                        
+                          
 }
-
-
-
-
 ```
 
 
