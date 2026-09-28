@@ -10,6 +10,7 @@ library(jsonlite)
 library(purrr)
 library(readr)
 library(lubridate)
+library(stringr)
 ```
 
 
@@ -203,21 +204,38 @@ Next, we'll turn the example into a helper function that can do the same thing f
 
 ```{r}
 
-api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMNP=FALSE, 
-                       SEX=TRUE, HHL=FALSE, SCH=FALSE, SCHL=FALSE, GEOG="ST",GSUBSET=99999){
+api_helper <- function(KEY,
+                       YEAR=2024,
+                       AGEP=TRUE,
+                       GASP=FALSE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMNP=FALSE, 
+                       SEX = TRUE, 
+                       FER=FALSE, HHL=FALSE, SCH=FALSE, SCHL=FALSE, 
+                       GEOG="STATE",GSUBSET="All"){
   
   # FIRST STEP: make sure that all of the inputs are correct.
   
-  # this if clause is checking that the inputs are the correct type
-  if (!all(is.logical(c(AGEP, GRPIP, JWAP, JWDP, JWMNP, SEX, HHL, SCH, SCHL))) || 
-      !all(is.character(c(GEOG, KEY,GSUBSET)))) {
-    stop("Wrong Kind of Input")}
-  # this one is checking if the year is one of the ones we're working with
+  # this if clause is checking if the year is one of the ones we're working with
   if(!YEAR %in% c(2021,2022,2023,2024)) {
     stop("Year Not in Range")}
+  
+  # this is checking that the other inputs are the correct type, and at least 1 numerical and 1 categorical are selected
+  numVars <- c(AGEP = AGEP, GASP = GASP, GRPIP = GRPIP, JWAP = JWAP, JWDP = JWDP, JWMNP = JWMNP)
+  catVars <- c(SEX = SEX, FER = FER, HHL = HHL, SCH = SCH, SCHL = SCHL)
+  if (!any(numVars)) {
+    stop("Choose at least one numeric variable.")}
+  if (!any(catVars)) {
+    stop("Choose at least one categorical variable.")
+  }
+  if (!all(is.logical(c(numVars,catVars))) || 
+      !all(is.character(c(GEOG,KEY,GSUBSET)))) {
+    stop("Wrong Kind of Input, variable selection is binary, and GEOG, KEY, and GSUBSET are strings.")}
+  
+  # making sure there's not more than one level of geography:
+  if (length(GEOG) != 1) {stop("Geography must be a single string.")}
+  
   # this is checking to make sure that the geography level is one that is possible
   if(!GEOG %in% c("ST","STATE","REGION","DIVISION")){
-    stop("Not a Geography Option")}
+    stop("Geography must be a string, choose STATE, REGION, or DIVISION")}
   
   # Next, I need to fix the whole ST/STATE issue, and ensure that the level matches the year.
   
@@ -227,7 +245,6 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
     GEOG <- "ST"}
   
   # Here, I'm checking to make sure all of the geography sub-setting lines up.
-  
   # basically, if the user specifies all, or chooses something that isn't an option, the function defaults to no subsetting.
   if (GSUBSET == "All" | (GEOG %in% c("ST","STATE") & !GSUBSET %in% geog_codes$stateCodes) | (GEOG %in% c("REGION") & !GSUBSET %in% geog_codes$regionCodes) | (GEOG %in% c("DIVISION") & !GSUBSET %in% geog_codes$divisionCodes)) {
     realGeog <- paste0(tolower(GEOG),":*")} # this sets up the geography line of the call, without sub setting
@@ -239,13 +256,12 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
   baseURL <- paste0("https://api.census.gov/data/",as.character(YEAR),"/acs/acs1/pums")
   
   # Now I'm setting up the default variables, and adding the selected variables to the pile.
+  selectedNums <- names(numVars)[numVars]
+  selectedCats <- names(catVars)[catVars]
+  allRequested <- unique(c("PWGTP", selectedNums, selectedCats))
   
-  baseVars <- c("PWGTP","GASP","FER") # These 3 variables will always be added. PWGTP is given by the rubric, and I'm choosing gasp and fer as my numerical and categorical options.
-  specVars <-c(AGEP = "AGEP", GRPIP = "GRPIP", JWAP = "JWAP", JWDP = "JWDP", JWMNP = "JWMNP", 
-               SEX = "SEX", HHL="HHL", SCH="SCH", SCHL="SCHL")
-  selectedSpecVars <- specVars[c(AGEP, GRPIP, JWAP, JWDP, JWMNP,SEX,HHL,SCH,SCHL)]
-  realVars <- paste(c(baseVars, selectedSpecVars), collapse = ",")
-  
+  # Finally, I'm creating the list of variables that will be called on.
+  realVars <- paste(allRequested, collapse = ",")
   
   # We should now finally be ready to actually call the API, and turn the results into a tibble. 
   
@@ -281,9 +297,20 @@ api_helper <- function(KEY,YEAR,AGEP=TRUE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMN
     
   # Here's where I'm editing the output to ensure all of the variables are the right types.
   
-  un_stats<-un_stats |>
-  mutate(across(any_of(c("PWGTP", "GASP", "AGEP", "GRPIP", "JWMNP")), as.double)) |> # this is setting the numerical variables to doubles
-  mutate(across(any_of(c("FER", "SEX", "HHL", "SCH", "SCHL", "JWAP", "JWDP", "ST", "STATE", "REGION", "DIVISION", "state", "region", "division")), as.factor)) # this is setting the categorical variables to factors
+  un_stats <- un_stats |>
+  mutate(across(any_of(c("PWGTP", "GASP", "AGEP", "GRPIP", "JWMNP")), as.double)) # this is setting the numerical variables to doubles
+  
+  yearKey <- paste0("y",as.character(YEAR - 2020))
+  yearMeta <- var_lists[[yearKey]]
+  
+  for (catVar in selectedCats) {
+    if (catVar %in% names(un_stats) && catVar %in% names(yearMeta)) {
+      valItems <- yearMeta[[catVar]]$values$item
+      if (!is.null(valItems)) {
+        levelsVec <- names(valItems)
+        labelsVec <- unname(unlist(valItems))
+        un_stats[[catVar]] <- factor(un_stats[[catVar]], levels = levelsVec, labels = labelsVec)}}}
+  
   
   class(un_stats) <- c("census", class(un_stats))
   
