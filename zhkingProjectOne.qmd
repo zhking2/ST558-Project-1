@@ -100,7 +100,7 @@ apiEx <- GET(
   url = baseUrl,
   query = list(
     get = "SEX,PWGTP,JWAP",
-    `for` = "state:*",
+    `for` = "state:01,02",
     SCHL = "24",
     key = censusKey
   )
@@ -237,16 +237,17 @@ apiHelper <- function(KEY,
   }
   
   # next, we have to fix the whole st/state issue between years, and then 
-  if (geogUpper %in% c("ST", "STATE")) {
-    apiGeog <- if (YEAR %in% c(2021, 2022)) "ST" else "STATE"
-    validCodes <- geogCodes$stateCodes
-  } else if (geogUpper == "REGION") {
-    apiGeog <- "region"
-    validCodes <- geogCodes$regionCodes
-  } else if (geogUpper == "DIVISION") {
-    apiGeog <- "division"
-    validCodes <- geogCodes$divisionCodes
-  }
+  if(geogUpper == "REGION"){
+  apiGeog <- "region"
+  validCodes <- geogCodes$regionCodes}
+  if(geogUpper == "DIVISION"){
+  apiGeog <- "division"
+  validCodes <- geogCodes$divisionCodes}
+  if(geogUpper %in% c("ST","STATE")){
+  validCodes <- geogCodes$stateCodes
+  if(YEAR %in% c(2021,2022)){
+    apiGeog<-"st"}
+  else{apiGeog<-"state"}}
   
   # Construct realGeog string
   if (GSUBSET == "All" || !GSUBSET %in% validCodes) {

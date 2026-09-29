@@ -1,7 +1,4 @@
 
-censusKey<-readRDS("../censusKey.rds")
-key <-censusKey
-
 grabCodes<-function(){
   check<-varLists[[1]]
   regions<-check$REGION
@@ -73,6 +70,10 @@ getJWDPPED<-function(){
   return(JWDP)
 }
 
+allStates <- paste(geogCodes$stateCodes, collapse = ",")
+allRegions <- paste(geogCodes$regionCodes, collapse = ",")
+allDivisions <- paste(geogCodes$divisionCodes, collapse = ",")
+
 matchInputsSimple <- function(key,year,agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset){
   if(!all(is.logical(c(agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl)))){
     stop("Each of the non-filtering variables takes a T/F value")
@@ -81,10 +82,13 @@ matchInputsSimple <- function(key,year,agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,h
     stop("The census key must be entered as a string")
   }
   geog <- tolower(geog)
-  if(!geog %in% c("state","region","division")){
-    stop("The geography options are state, region, and division.")
+  if(!geog %in% c("st","state","region","division")){
+    stop("The geography options are st, state, region, and division.")
   }
 }
+
+numVars <- c(agep=agep, gasp=gasp,grpip=grpip,jwap=jwap,jwdp=jwdp,jwmnp=jwmnp)
+catVars <- c(sex=sex,fer=fer,hhl=hhl,sch=sch,schl=schl)
 
 atLeastOne <- function(numVars,catVars){
   if (!any(numVars)) {
@@ -101,75 +105,76 @@ setVarString <- function(numVars,catVars){
   realVars <- toupper(paste(allRequested, collapse = ","))
 }
 
+varString <- toupper(setVarString(numVars,catVars))
+
 matchGeogSubsets <- function(geog,gsubset){if(geog == "region"){
   options<-geogCodes$regionCodes
   options[[6]]<-"All"}
   if(geog == "division"){
     options<-geogCodes$divisionCodes
     options[[11]]<-"All"}
-  if(geog == "state"){
+  if(geog %in% c("st","state")){
     options<-geogCodes$stateCodes
     options[[53]]<-"All"}
   
   if(!gsubset %in% options){
     stop(paste0("The ", geog," code selected does not exist, choose from: ",paste(options,collapse = ",")))}}
 
+fixDumbSwitch <- function(year,geog){
+  if(geog %in% c("st","state")){
+    ifelse(year < 2023,geog<-"state",geog <- "state")
+  }
+}
+
+geog<-fixDumbSwitch(year,geog)
+
 allowForAll <- function(geog,gsubset){
   if (gsubset == "All"){
     if(geog == "region"){gsubset <-allRegions}
     else if (geog == "division"){gsubset <- allDivisions}
-    else if (geog == "state"){gsubset <- allStates}
+    else if (geog %in% c("st","state")){gsubset <- allStates}
   }
   else {gsubset <- gsubset}
 }
+
+gsubset<-allowForAll(geog,gsubset)
 
 setGeogString <- function(geog,gsubset){
   geogString <- paste0(geog,":",gsubset)
 }
 
+geogString <- setGeogString(geog,gsubset)
+
+baseUrl <-paste0("https://api.census.gov/data/",year,"/acs/acs1/pums")
+
+censusUrl <- paste0(
+  "https://api.census.gov/data/", year, "/acs/acs1/pums",
+  "?get=", varString,
+  "&for=", geog,":",gsubset,
+  "&key=", key
+)
+
+
+
+
+request <- GET(
+  url = censusUrl
+)
+rawStats <- content(request, "text", encoding = "UTF-8")
+parsedStats <- fromJSON(rawStats)
+censusPull <- as_tibble(parsedStats)
+colnames(exampleStats) <- censusPull[1, ]
+censusPull <- censusPull[-1, , drop = FALSE]
 
 apiHarmer <- function(key,year=2024,agep=T,gasp=F,grpip=F,jwap=F,jwdp=F,jwmnp=F,sex=T,fer=F,hhl=F,sch=F,schl=F,geog="region",gsubset="2"){
+  # First: let's verify all of the inputs are correct
   
-  geogCodes <- grabCodes()
   
-  allStates <- paste(geogCodes$stateCodes, collapse = ",")
-  allRegions <- paste(geogCodes$regionCodes, collapse = ",")
-  allDivisions <- paste(geogCodes$divisionCodes, collapse = ",")
   
-  numVars <- c(agep=agep, gasp=gasp,grpip=grpip,jwap=jwap,jwdp=jwdp,jwmnp=jwmnp)
-  catVars <- c(sex=sex,fer=fer,hhl=hhl,sch=sch,schl=schl)
+  # Next: let's create the helpers:
   
-  matchInputsSimple(key,year,agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset)
   
-  atLeastOne(numVars,catVars)
-  
-  varString <- setVarString(numVars,catVars)
-  
-  matchGeogSubsets(geog,gsubset)
-  
-  gsubset<-allowForAll(geog,gsubset)
-  
-  geogString <- setGeogString(geog,gsubset)
-  
-  censusUrl <- paste0(
-    "https://api.census.gov/data/", year, "/acs/acs1/pums",
-    "?get=", varString,
-    "&for=", geogString,
-    "&key=", key
-  )
-  
-  request <- GET(
-    url = censusUrl
-  )
-  rawStats <- content(request, "text", encoding = "UTF-8")
-  parsedStats <- fromJSON(rawStats)
-  censusPull <- as_tibble(parsedStats)
-  colnames(censusPull) <- censusPull[1, ]
-  censusPull <- censusPull[-1, , drop = FALSE]
-  
+  # 
 }
 
-woah <-apiHarmer(key=censusKey,year=2021,
-                 agep=T,gasp=F,grpip=F,jwap=F,jwdp=F,jwmnp=F,
-                 sex=T,fer=F,hhl=F,sch=F,schl=F,geog="state",gsubset="02")
 

@@ -6,6 +6,7 @@ GEOG="STATE";GSUBSET="01"
 
 agep=T
 gasp=F
+grpip=F
 jwap=T
 jwdp=T
 jwmnp=F
@@ -21,6 +22,7 @@ geog="state"
 geog="st"
 
 gsubset="2"
+gsubset="All"
 
 #bad
 geog<-"state";year<-2021
