@@ -24,7 +24,7 @@
     }
     
   }
-  matchInputs2(dawg,numerics,categorics)
+  matchInputs2(census,numerics,categorics)
   
   varsInCensus <- function(census,numerics,categorics){
     potVars <- colnames(census)
@@ -36,23 +36,29 @@
       stop("No valid variables selected")
     }
     endVars <- list("num"=numerics,"cat"=categorics)
-    return(endVars)
-    }
+    return(endVars)}
 
-  endVars<-varsInCensus(dawg,numerics,categorics)  
+  endVars<-varsInCensus(census,numerics,categorics)  
   numerics<-endVars$num
   categorics<-endVars$cat
   
-  numCensus <- select(dawg,all_of(numerics))
-  catCensus <- select(dawg,all_of(categorics))
+  numCensus <- select(census,all_of(numerics))
+  catCensus <- select(census,all_of(categorics))
   
-  numsum <- data.frame(
-    variable = names(doog),
-    mean     = sapply(doog, mean, na.rm = TRUE),
-    sd       = sapply(doog, sd, na.rm = TRUE),
-    row.names = NULL
-  )
+  numSum <- data.frame(
+    variable = names(numCensus),
+    mean = sapply(numCensus, mean, na.rm = TRUE),
+    sd = sapply(numCensus, sd, na.rm = TRUE),
+    row.names = NULL)
   
+  catSum <- do.call(rbind, lapply(names(catCensus), 
+                                  function(var) {
+                                    counts <- table(catCensus[[var]], useNA = "ifany")
+                                    data.frame(
+                                      variable = var,
+                                      level = names(counts),
+                                      count = as.vector(counts),
+                                      row.names = NULL)}))
   
-  
+  finSum <- list(numSum,catSum)
   
