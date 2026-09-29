@@ -241,10 +241,10 @@ get_time_midpoint <- function(time_ranges, format_12hr=TRUE) {
   
   # 4. Handle overnight boundary crossover
   overnight <- !is.na(start_time) & !is.na(end_time) & (end_time < start_time)
-  end_time[overnight] <- end_time[overnight] + (24 * 3600)
+  end_time[overnight] <- end_time[overnight]+(24 * 3600)
   
   # 5. Compute midpoint
-  midpoint <- start_time + (end_time - start_time) / 2
+  midpoint <- start_time+(end_time - start_time) / 2
   
   # 6. Format output (12-hour AM/PM vs 24-hour)
   if (format_12hr) {
@@ -489,7 +489,7 @@ summary.census <- function(census,
                               data.frame(variable=var,level=names(counts),count=as.vector(counts),row.names=NULL)}))
     
     # Now we combine those two into a final list.
-    finSum <- list("Numerical Variables" = numSum,"Categorical Variables" = catSum)
+    finSum <- list("Numerical Variables"=numSum,"Categorical Variables"=catSum)
     return(finSum)
 }
 
@@ -498,11 +498,20 @@ summary.census <- function(census,
 
 ## Graphical Summaries 
 
-The final code writing section: creating a generic plot function. 
+The final code writing section: creating a generic plot function. This is a fairly easy call to ggplot.
 
 ```{r}
-plot.census <- function ()
+plot_census <- function(df, cat_var, num_var) {
+  ggplot(df, aes(x=.data[[cat_var]], y=.data[[num_var]], weight=PWGTP)) +
+    geom_boxplot() +
+    labs(
+      x=cat_var,
+      y=num_var,
+      title=paste("Boxplot of", num_var, "by", cat_var)) +
+    theme_minimal()
+}
 ```
 
 
 # Investigation
+

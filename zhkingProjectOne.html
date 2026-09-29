@@ -347,10 +347,10 @@ object 'url' not found</code></pre>
 <span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 4. Handle overnight boundary crossover</span></span>
 <span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a>  overnight <span class="ot">&lt;-</span> <span class="sc">!</span><span class="fu">is.na</span>(start_time) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(end_time) <span class="sc">&amp;</span> (end_time <span class="sc">&lt;</span> start_time)</span>
-<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>  end_time[overnight] <span class="ot">&lt;-</span> end_time[overnight] <span class="sc">+</span> (<span class="dv">24</span> <span class="sc">*</span> <span class="dv">3600</span>)</span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>  end_time[overnight] <span class="ot">&lt;-</span> end_time[overnight]<span class="sc">+</span>(<span class="dv">24</span> <span class="sc">*</span> <span class="dv">3600</span>)</span>
 <span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 5. Compute midpoint</span></span>
-<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>  midpoint <span class="ot">&lt;-</span> start_time <span class="sc">+</span> (end_time <span class="sc">-</span> start_time) <span class="sc">/</span> <span class="dv">2</span></span>
+<span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>  midpoint <span class="ot">&lt;-</span> start_time<span class="sc">+</span>(end_time <span class="sc">-</span> start_time) <span class="sc">/</span> <span class="dv">2</span></span>
 <span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 6. Format output (12-hour AM/PM vs 24-hour)</span></span>
 <span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (format_12hr) {</span>
@@ -586,13 +586,25 @@ object 'url' not found</code></pre>
 <span id="cb28-57"><a href="#cb28-57" aria-hidden="true" tabindex="-1"></a>                              <span class="fu">data.frame</span>(<span class="at">variable=</span>var,<span class="at">level=</span><span class="fu">names</span>(counts),<span class="at">count=</span><span class="fu">as.vector</span>(counts),<span class="at">row.names=</span><span class="cn">NULL</span>)}))</span>
 <span id="cb28-58"><a href="#cb28-58" aria-hidden="true" tabindex="-1"></a>    </span>
 <span id="cb28-59"><a href="#cb28-59" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Now we combine those two into a final list.</span></span>
-<span id="cb28-60"><a href="#cb28-60" aria-hidden="true" tabindex="-1"></a>    finSum <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="st">"Numerical Variables"</span> <span class="ot">=</span> numSum,<span class="st">"Categorical Variables"</span> <span class="ot">=</span> catSum)</span>
+<span id="cb28-60"><a href="#cb28-60" aria-hidden="true" tabindex="-1"></a>    finSum <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="st">"Numerical Variables"</span><span class="ot">=</span>numSum,<span class="st">"Categorical Variables"</span><span class="ot">=</span>catSum)</span>
 <span id="cb28-61"><a href="#cb28-61" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(finSum)</span>
 <span id="cb28-62"><a href="#cb28-62" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="graphical-summaries" class="level2">
 <h2 class="anchored" data-anchor-id="graphical-summaries">Graphical Summaries</h2>
+<p>The final code writing section: creating a generic plot function. This is a fairly easy call to ggplot.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>plot_census <span class="ot">&lt;-</span> <span class="cf">function</span>(df, cat_var, num_var) {</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(df, <span class="fu">aes</span>(<span class="at">x=</span>.data[[cat_var]], <span class="at">y=</span>.data[[num_var]], <span class="at">weight=</span>PWGTP)) <span class="sc">+</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>      <span class="at">x=</span>cat_var,</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>      <span class="at">y=</span>num_var,</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">title=</span><span class="fu">paste</span>(<span class="st">"Boxplot of"</span>, num_var, <span class="st">"by"</span>, cat_var)) <span class="sc">+</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_minimal</span>()</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
 </section>
 </section>
 <section id="investigation" class="level1">
