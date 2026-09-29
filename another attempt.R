@@ -16,7 +16,6 @@ grabCodes<-function(){
   geogCodes<-list("regionCodes"=names(regionCodes),"stateCodes"=names(stateCodes),"divisionCodes"=names(divisionCodes))
   return(geogCodes)
 }
-
 geogCodes <- grabCodes()
 
 get_time_midpoint <- function(time_ranges, format_12hr = TRUE) {
@@ -230,3 +229,49 @@ woah <-apiHarmer(key=censusKey,year=2021,
                  agep=T,gasp=F,grpip=F,JWAP=T,JWDP=T,jwmnp=F,
                  sex=T,fer=F,hhl=F,sch=F,schl=F,geog="state",gsubset="02")
 
+
+censusAPIMultiyear <- function(key,
+                               Y2021=FALSE, Y2022=FALSE, Y2023=FALSE, Y2024=TRUE, 
+                               agep=TRUE,
+                               gasp=FALSE, grpip=FALSE, JWAP=FALSE, JWDP=FALSE, jwmnp=FALSE, 
+                               sex=TRUE, 
+                               fer=FALSE, hhl=FALSE, sch=FALSE, schl=FALSE, 
+                               geog="STATE", gsubset="01") {
+  
+  puller <- function(yearN) {
+    block <- apiHarmer(
+      key = key, 
+      year = yearN, 
+      agep = agep, gasp = gasp, grpip = grpip, JWAP = JWAP, JWDP = JWDP, jwmnp = jwmnp,
+      sex = sex, fer = fer, hhl = hhl, sch = sch, schl = schl,
+      geog = geog, gsubset = gsubset
+    )
+    block$Year <- yearN
+    return(block)
+  }
+  
+  dataList <- list()
+  
+  if (Y2021) { dataList[["2021"]] <- puller(2021) }
+  if (Y2022) { dataList[["2022"]] <- puller(2022) }
+  if (Y2023) { dataList[["2023"]] <- puller(2023) }
+  if (Y2024) { dataList[["2024"]] <- puller(2024) }
+  
+  if (length(dataList) == 0) {
+    stop("Choose at least 1 year.")
+  }
+  
+  comboYears <- bind_rows(dataList)
+  
+  class(comboYears) <- c("census", class(comboYears))
+  return(comboYears)
+}
+
+
+dawg <-censusAPIMultiyear(key=censusKey,Y2021=T,Y2022=F,Y2023=T,Y2024=F,
+                 agep=T,gasp=F,grpip=F,JWAP=T,JWDP=T,jwmnp=F,
+                 sex=T,fer=F,hhl=F,sch=F,schl=F,geog="state",gsubset="02")
+
+
+numbers<-list("AGEP","GASP","JWAP")
+letters<-list("SEX","FER","SCH")

@@ -114,9 +114,54 @@ exampleStats <- exampleStats[-1, , drop = FALSE]
 remove(base,url,apiEx,rawStats,parsedStats,exampleStats)
 ```
 
-A short aside: we need the list of geography codes, so I'll make a helper function to do that for me, without clogging up my R environment.
+We need a bunch of helper functions before we can get to the real deal.
+
+First, we need a function that checks if the basic variable inputs make sense.
 
 ```{r}
+matchInputsSimple <- function(key,year,agep,gasp,grpip,JWAP,JWAP,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset){
+  if(!all(is.logical(c(agep,gasp,grpip,JWAP,JWDP,jwmnp,sex,fer,hhl,sch,schl)))){
+    stop("Each of the non-filtering variables takes a T/F value")
+  }
+  if(!is.character(key)){
+    stop("The census key must be entered as a string")
+  }
+  geog <- tolower(geog)
+  if(!geog %in% c("state","region","division")){
+    stop("The geography options are state, region, and division.")
+  }
+}
+```
+
+Next, we need to check if the user has selected at least one numeric and one categorical variable.
+
+```{r}
+atLeastOne <- function(numVars,catVars){
+  if (!any(numVars)) {
+    stop("Choose at least one numeric variable.")}
+  if (!any(catVars)) {
+    stop("Choose at least one categorical variable.")
+  }
+}
+```
+
+Now we'll create the string for the selected (and prescribed) variables.
+
+```{r}
+setVarString <- function(numVars,catVars){
+  selectedNums <- names(numVars)[numVars]
+  selectedCats <- names(catVars)[catVars]
+  allRequested <- unique(c("PWGTP", selectedNums, selectedCats))
+  realVars <- toupper(paste(allRequested, collapse = ","))
+}
+```
+
+Now we need to deal with the geography. The rubric implies a difference between the years 2021/2022 and 2023/2024 in terms of the st/state variable, however when I attempted to account for this I discovered that it was not the case on my end. If you go back through my commits you can see when I figured this out.
+
+Anyway, let's start by getting a list of the codes for the geography levels.
+
+```{r}
+
 grabCodes<-function(){
   check<-varLists[[1]]
   regions<-check$REGION
@@ -131,10 +176,51 @@ grabCodes<-function(){
   geogCodes<-list("regionCodes"=names(regionCodes),"stateCodes"=names(stateCodes),"divisionCodes"=names(divisionCodes))
   return(geogCodes)
 }
+geogCodes <- grabCodes()
 
 ```
 
-We also need a helper function to turn the times from JWAP/JDAP into the midpoints. As mentioned in the rubric, I did use a LLM for this. I then created functions to translate the JWAP/JDAP data later, without clogging up my environment.
+Moving on, let's check to make sure that the inputted geography level matches the setting.
+
+```{r}
+matchGeogSubsets <- function(geog,gsubset){if(geog == "region"){
+  options<-geogCodes$regionCodes
+  options[[6]]<-"All"}
+  if(geog == "division"){
+    options<-geogCodes$divisionCodes
+    options[[11]]<-"All"}
+  if(geog == "state"){
+    options<-geogCodes$stateCodes
+    options[[53]]<-"All"}
+  
+  if(!gsubset %in% options){
+    stop(paste0("The ", geog," code selected does not exist, choose from: ",paste(options,collapse = ",")))}}
+```
+
+Now we need to account for the "all" option. I think you can do this with the asterisk, but in my fevered attempts to fix the st/state issue, I changed it to this method, and it works, so I'm not changing it again.
+
+```{r}
+allowForAll <- function(geog,gsubset){
+  if (gsubset == "All"){
+    if(geog == "region"){gsubset <-allRegions}
+    else if (geog == "division"){gsubset <- allDivisions}
+    else if (geog == "state"){gsubset <- allStates}
+  }
+  else {gsubset <- gsubset}
+}
+```
+
+Now we'll set up the string for the geography settings.
+
+```{r}
+setGeogString <- function(geog,gsubset){
+  geogString <- paste0(geog,":",gsubset)
+}
+```
+
+Now I need to do some final set-up for fixing up the final tibble. 
+
+First, we'll ask AI to help us with the midpoint function:
 
 ```{r}
 get_time_midpoint <- function(time_ranges, format_12hr = TRUE) {
@@ -166,13 +252,15 @@ get_time_midpoint <- function(time_ranges, format_12hr = TRUE) {
     return(format(midpoint, "%H:%M"))    # Returns e.g. "18:37"
   }
 }
+```
 
-# Now we want to apply this to JWAP potential values.
+And now we apply this to the values for JWAP and JWDP, which are unfortunately not the same.
 
+```{r}
 getJWAPPED<-function(){
   check<-varLists[[1]]
-  jwap1<-check$JWAP
-  values<-jwap1$values
+  JWAP1<-check$JWAP
+  values<-JWAP1$values
   JWAP<-unlist(values$item)
   ids<-names(JWAP)
   JWAP<-cbind("JWAP"=ids,"times"=JWAP)
@@ -183,8 +271,8 @@ getJWAPPED<-function(){
 
 getJWDPPED<-function(){
   check<-varLists[[1]]
-  jwdp1<-check$JWDP
-  values<-jwdp1$values
+  JWDP1<-check$JWDP
+  values<-JWDP1$values
   JWDP<-unlist(values$item)
   ids<-names(JWDP)
   JWDP<-cbind("JWDP"=ids,"times"=JWDP)
@@ -193,198 +281,173 @@ getJWDPPED<-function(){
   return(JWDP)
 }
 
+JWAPVals<-getJWAPPED()
+JWDPVals<-getJWDPPED()
 ```
 
-
-Next, we'll turn the example into a helper function that can do the same thing for any call.
+Finally, we pull on all these functions to create the opposite of a helper function: a harmer function.
 
 ```{r}
-
-apiHelper <- function(KEY,
-                       YEAR=2024,
-                       AGEP=TRUE,
-                       GASP=FALSE,GRPIP=FALSE,JWAP=FALSE,JWDP=FALSE,JWMNP=FALSE, 
-                       SEX = TRUE, 
-                       FER=FALSE, HHL=FALSE, SCH=FALSE, SCHL=FALSE, 
-                       GEOG="STATE",GSUBSET="01"){
+apiHarmer <- function(key,year=2024,agep=T,gasp=F,grpip=F,JWAP=F,JWDP=F,jwmnp=F,sex=T,fer=F,hhl=F,sch=F,schl=F,geog="region",gsubset="2"){
   
-  # FIRST STEP: make sure that all of the inputs are correct.
+  geogCodes <- grabCodes()
   
-  # this if clause is checking if the year is one of the ones we're working with
-  if(!YEAR %in% c(2021,2022,2023,2024)) {
-    stop("Year Not in Range")}
+  allStates <- paste(geogCodes$stateCodes, collapse = ",")
+  allRegions <- paste(geogCodes$regionCodes, collapse = ",")
+  allDivisions <- paste(geogCodes$divisionCodes, collapse = ",")
   
-  # this is checking that the other inputs are the correct type, and at least 1 numerical and 1 categorical are selected
-  numVars <- c(AGEP = AGEP, GASP = GASP, GRPIP = GRPIP, JWAP = JWAP, JWDP = JWDP, JWMNP = JWMNP)
-  catVars <- c(SEX = SEX, FER = FER, HHL = HHL, SCH = SCH, SCHL = SCHL)
-  if (!any(numVars)) {
-    stop("Choose at least one numeric variable.")}
-  if (!any(catVars)) {
-    stop("Choose at least one categorical variable.")
-  }
-  if (!all(is.logical(c(numVars,catVars))) || 
-      !all(is.character(c(GEOG,KEY,GSUBSET)))) {
-    stop("Wrong Kind of Input, variable selection is binary, and GEOG, KEY, and GSUBSET are strings.")}
+  numVars <- c(agep=agep, gasp=gasp,grpip=grpip,JWAP=JWAP,JWDP=JWDP,jwmnp=jwmnp)
+  catVars <- c(sex=sex,fer=fer,hhl=hhl,sch=sch,schl=schl)
   
-  # time to deal with geography stuff:
+  matchInputsSimple(key,year,agep,gasp,grpip,JWAP,JWDP,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset)
   
-  # first, lets call our geography values helper function
-   geogUpper <- toupper(GEOG)
+  atLeastOne(numVars,catVars)
   
-  # now, we check to make sure that geog is in one of the options
-  if (!geogUpper %in% c("ST", "STATE", "REGION", "DIVISION")) {
-    stop("Geography must be STATE, REGION, or DIVISION")
-  }
+  varString <- setVarString(numVars,catVars)
   
-  # next, we have to fix the whole st/state issue between years, and then 
-  if(geogUpper == "REGION"){
-  apiGeog <- "region"
-  validCodes <- geogCodes$regionCodes}
-  if(geogUpper == "DIVISION"){
-  apiGeog <- "division"
-  validCodes <- geogCodes$divisionCodes}
-  if(geogUpper %in% c("ST","STATE")){
-  validCodes <- geogCodes$stateCodes
-  if(YEAR %in% c(2021,2022)){
-    apiGeog<-"st"}
-  else{apiGeog<-"state"}}
+  matchGeogSubsets(geog,gsubset)
   
-  # Construct realGeog string
-  if (GSUBSET == "All" || !GSUBSET %in% validCodes) {
-    realGeog <- paste0(apiGeog,":",paste(validCodes, collapse = ","))
-  } else {
-    realGeog <- paste0(apiGeog, ":", GSUBSET)
-  }
+  gsubset<-allowForAll(geog,gsubset)
   
-  # This is the baseline URL without anything applied yet.
-
-  baseURL <- paste0("https://api.census.gov/data/",as.character(YEAR),"/acs/acs1/pums")
+  geogString <- setGeogString(geog,gsubset)
   
-  # Now I'm setting up the default variables, and adding the selected variables to the pile.
-  selectedNums <- names(numVars)[numVars]
-  selectedCats <- names(catVars)[catVars]
-  allRequested <- unique(c("PWGTP", selectedNums, selectedCats))
-  
-  # Finally, I'm creating the list of variables that will be called on.
-  realVars <- paste(allRequested, collapse = ",")
-  
-  # We should now finally be ready to actually call the API, and turn the results into a tibble. 
+  censusUrl <- paste0(
+    "https://api.census.gov/data/", year, "/acs/acs1/pums",
+    "?get=", varString,
+    "&for=", geogString,
+    "&key=", key
+  )
   
   request <- GET(
-    url = baseURL,
-    query = list(
-      get = realVars,
-      `for` = realGeog,
-      key = KEY
-    )
+    url = censusUrl
   )
   rawStats <- content(request, "text", encoding = "UTF-8")
   parsedStats <- fromJSON(rawStats)
-  unStats <- as_tibble(parsedStats)
+  censusPull <- as_tibble(parsedStats)
+  colnames(censusPull) <- censusPull[1, ]
+  censusPull <- censusPull[-1, , drop = FALSE]
   
-  # fixing the column names
-  colnames(unStats) <- unStats[1, ]
-  unStats <- unStats[-1, , drop = FALSE]
+  # Here I'm joining the output with my JWAPVals tibble, so that I can swap out the time codes for the actual times
+  if ("JWAP" %in% names(censusPull)) {
+    censusPull <- censusPull |>
+      left_join(JWAPVals, by = "JWAP") |> 
+      mutate(JWAP = times) |> # here's where I do that swap
+      select(-times)}    # now I'm removing the leftovers of the join
   
-  # lets call the helper functions from earlier to make the jwap/jwdp values
-  
-  JWAPVals<-getJWAPPED()
-  JWDPVals<-getJWDPPED()
-
-  # Here I'm joining the output with my JWAPvals tibble, so that I can swap out the time codes for the actual times
-  if ("JWAP" %in% names(unStats)) {
-  unStats <- unStats |>
-    left_join(JWAPvals, by = "JWAP") |> 
-    mutate(JWAP = times) |> # here's where I do that swap
-    select(-times)}    # now I'm removing the leftovers of the join
-
   # and now I repeat the process for JWDP, which unfortunately has different values from JWAP
-  if ("JWDP" %in% names(unStats)) {
-  unStats <- unStats |>
-    left_join(JWDPvals, by = "JWDP") |>
-    mutate(JWDP = times) |>
-    select(-times)}
-    
-  # Here's where I'm editing the output to ensure all of the variables are the right types.
+  if ("JWDP" %in% names(censusPull)) {
+    censusPull <- censusPull |>
+      left_join(JWDPVals, by = "JWDP") |>
+      mutate(JWDP = times) |>
+      select(-times)}
   
-  unStats <- unStats |>
-  mutate(across(any_of(c("PWGTP", "GASP", "AGEP", "GRPIP", "JWMNP")), as.double)) # this is setting the numerical variables to doubles
+  censusPull <- censusPull |>
+    mutate(across(any_of(c("PWGTP", "GASP", "AGEP", "GRPIP", "JWMNP")), as.double))
   
-  yearKey <- paste0("y",YEAR)
+  yearKey <- paste0("y",year)
   yearMeta <- varLists[[yearKey]]
   
-  for (catVar in selectedCats) {
-    if (catVar %in% names(unStats) && catVar %in% names(yearMeta)) {
-      valItems <- yearMeta[[catVar]]$values$item
+  selectedCats <- names(catVars)[catVars]
+  
+  for (cat_var in selectedCats) {
+    cat_upper <- toupper(cat_var)
+    
+    meta_key <- if (cat_upper %in% names(yearMeta)) cat_upper else if (cat_var %in% names(yearMeta)) cat_var else NULL
+    
+    if (cat_upper %in% names(censusPull) && !is.null(meta_key)) {
+      valItems <- yearMeta[[meta_key]]$values$item
       if (!is.null(valItems)) {
-        levelsVec <- names(valItems)
+        levelsVec <- as.character(names(valItems))
         labelsVec <- unname(unlist(valItems))
-        unStats[[catVar]] <- factor(unStats[[catVar]], levels = levelsVec, labels = labelsVec)}}}
+        
+        censusPull <- censusPull |>
+          mutate(!!cat_upper := factor(.data[[cat_upper]], levels = levelsVec, labels = labelsVec))
+      }
+    }
+  }
   
+  class(censusPull) <- c("census", class(censusPull))
   
-  class(unStats) <- c("census", class(unStats))
+  return(censusPull)
   
-  return(unStats)                        
-                          
 }
 ```
 
 
 ## Combining Years
 
-This helper function allows for us to call multiple years, using the original apiHelper function.
+This helper function allows for us to call multiple years, using the original apiHarmer function, and a built-in helper function this time.
 
 ```{r}
 
-censusAPIMultiyear <- function(KEY,
+censusAPIMultiyear <- function(key,
                                Y2021=FALSE, Y2022=FALSE, Y2023=FALSE, Y2024=TRUE, 
-                               AGEP=TRUE,
-                               GASP=FALSE, GRPIP=FALSE, JWAP=FALSE, JWDP=FALSE, JWMNP=FALSE, 
-                               SEX=TRUE, 
-                               FER=FALSE, HHL=FALSE, SCH=FALSE, SCHL=FALSE, 
-                               GEOG="STATE", GSUBSET="01") {
-    
-   puller <- function(yearN) {
-      block <- apiHelper(
-        KEY = KEY, 
-        YEAR = yearN, 
-        AGEP = AGEP, GASP = GASP, GRPIP = GRPIP, JWAP = JWAP, JWDP = JWDP, JWMNP = JWMNP,
-        SEX = SEX, FER = FER, HHL = HHL, SCH = SCH, SCHL = SCHL,
-        GEOG = GEOG, GSUBSET = GSUBSET
-      )
-      block$Year <- yearN
-      return(block)
-    }
-    
-    dataList <- list()
-    
-    block1<-puller(2022)
-    
-    if (Y2021) { dataList[["2021"]] <- puller(2021) }
-    if (Y2022) { dataList[["2022"]] <- puller(2022) }
-    if (Y2023) { dataList[["2023"]] <- puller(2023) }
-    if (Y2024) { dataList[["2024"]] <- puller(2024) }
-    
-    if (length(dataList) == 0) {
-      stop("Choose at least 1 year.")
-    }
-    
-    comboYears <- bind_rows(dataList)
-    
-    class(comboYears) <- c("census", class(comboYears))
-    return(comboYears)
+                               agep=TRUE,
+                               gasp=FALSE, grpip=FALSE, JWAP=FALSE, JWDP=FALSE, jwmnp=FALSE, 
+                               sex=TRUE, 
+                               fer=FALSE, hhl=FALSE, sch=FALSE, schl=FALSE, 
+                               geog="STATE", gsubset="01") {
+  
+  puller <- function(yearN) {
+    block <- apiHarmer(
+      key = key, 
+      year = yearN, 
+      agep = agep, gasp = gasp, grpip = grpip, JWAP = JWAP, JWDP = JWDP, jwmnp = jwmnp,
+      sex = sex, fer = fer, hhl = hhl, sch = sch, schl = schl,
+      geog = geog, gsubset = gsubset
+    )
+    block$Year <- yearN
+    return(block)
+  }
+  
+  dataList <- list()
+  
+  if (Y2021) { dataList[["2021"]] <- puller(2021) }
+  if (Y2022) { dataList[["2022"]] <- puller(2022) }
+  if (Y2023) { dataList[["2023"]] <- puller(2023) }
+  if (Y2024) { dataList[["2024"]] <- puller(2024) }
+  
+  if (length(dataList) == 0) {
+    stop("Choose at least 1 year.")
+  }
+  
+  comboYears <- bind_rows(dataList)
+  
+  class(comboYears) <- c("census", class(comboYears))
+  return(comboYears)
 }
 ```
-
-test run:
-
 
 
 # Part Two: Writing a Generic Function for Summarizing
 
-## Generic Functions
-
 ## Numerical Summaries
+
+Moving on from the API Call itself, it's time to create our summary function.
+
+
+```{r}
+summary.census <- function(census,
+                           numerics=c("AGEP","GASP","GRPIP","JWMNP"),
+                           categorics=c("SEX","FER","HHL","SCH","SCHL")){
+  
+  # First, let's check to make sure all of our inputs match again.
+  
+    
+  
+  # Next, let's make sure the list of variables selected are all in the census, and remove those tht aren't.
+  
+  
+  # 
+  
+  
+  
+  
+}
+
+
+```
+
 
 ## Graphical Summaries 
 

@@ -31,3 +31,23 @@ woah <-apiHarmer(key=censusKey,year=2021,
 
 
 remove(year,agep,gasp,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset)
+
+
+numers <- c("PWGTP","AGEP","JWAP","JWDP","DUMMY")
+categors <- c("SEX","HHL","FER","DUMMY")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
