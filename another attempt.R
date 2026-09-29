@@ -51,8 +51,8 @@ get_time_midpoint <- function(time_ranges, format_12hr = TRUE) {
 
 getJWAPPED<-function(){
   check<-varLists[[1]]
-  jwap1<-check$JWAP
-  values<-jwap1$values
+  JWAP1<-check$JWAP
+  values<-JWAP1$values
   JWAP<-unlist(values$item)
   ids<-names(JWAP)
   JWAP<-cbind("JWAP"=ids,"times"=JWAP)
@@ -63,8 +63,8 @@ getJWAPPED<-function(){
 
 getJWDPPED<-function(){
   check<-varLists[[1]]
-  jwdp1<-check$JWDP
-  values<-jwdp1$values
+  JWDP1<-check$JWDP
+  values<-JWDP1$values
   JWDP<-unlist(values$item)
   ids<-names(JWDP)
   JWDP<-cbind("JWDP"=ids,"times"=JWDP)
@@ -73,8 +73,11 @@ getJWDPPED<-function(){
   return(JWDP)
 }
 
-matchInputsSimple <- function(key,year,agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset){
-  if(!all(is.logical(c(agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl)))){
+JWAPVals<-getJWAPPED()
+JWDPVals<-getJWDPPED()
+
+matchInputsSimple <- function(key,year,agep,gasp,grpip,JWAP,JWAP,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset){
+  if(!all(is.logical(c(agep,gasp,grpip,JWAP,JWDP,jwmnp,sex,fer,hhl,sch,schl)))){
     stop("Each of the non-filtering variables takes a T/F value")
   }
   if(!is.character(key)){
@@ -128,7 +131,18 @@ setGeogString <- function(geog,gsubset){
 }
 
 
-apiHarmer <- function(key,year=2024,agep=T,gasp=F,grpip=F,jwap=F,jwdp=F,jwmnp=F,sex=T,fer=F,hhl=F,sch=F,schl=F,geog="region",gsubset="2"){
+
+
+
+
+
+
+
+
+
+
+
+apiHarmer <- function(key,year=2024,agep=T,gasp=F,grpip=F,JWAP=F,JWDP=F,jwmnp=F,sex=T,fer=F,hhl=F,sch=F,schl=F,geog="region",gsubset="2"){
   
   geogCodes <- grabCodes()
   
@@ -136,10 +150,10 @@ apiHarmer <- function(key,year=2024,agep=T,gasp=F,grpip=F,jwap=F,jwdp=F,jwmnp=F,
   allRegions <- paste(geogCodes$regionCodes, collapse = ",")
   allDivisions <- paste(geogCodes$divisionCodes, collapse = ",")
   
-  numVars <- c(agep=agep, gasp=gasp,grpip=grpip,jwap=jwap,jwdp=jwdp,jwmnp=jwmnp)
+  numVars <- c(agep=agep, gasp=gasp,grpip=grpip,JWAP=JWAP,JWDP=JWDP,jwmnp=jwmnp)
   catVars <- c(sex=sex,fer=fer,hhl=hhl,sch=sch,schl=schl)
   
-  matchInputsSimple(key,year,agep,gasp,grpip,jwap,jwdp,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset)
+  matchInputsSimple(key,year,agep,gasp,grpip,JWAP,JWDP,jwmnp,sex,fer,hhl,sch,schl,geog,gsubset)
   
   atLeastOne(numVars,catVars)
   
@@ -167,9 +181,52 @@ apiHarmer <- function(key,year=2024,agep=T,gasp=F,grpip=F,jwap=F,jwdp=F,jwmnp=F,
   colnames(censusPull) <- censusPull[1, ]
   censusPull <- censusPull[-1, , drop = FALSE]
   
+  # Here I'm joining the output with my JWAPVals tibble, so that I can swap out the time codes for the actual times
+  if ("JWAP" %in% names(censusPull)) {
+    censusPull <- censusPull |>
+      left_join(JWAPVals, by = "JWAP") |> 
+      mutate(JWAP = times) |> # here's where I do that swap
+      select(-times)}    # now I'm removing the leftovers of the join
+  
+  # and now I repeat the process for JWDP, which unfortunately has different values from JWAP
+  if ("JWDP" %in% names(censusPull)) {
+    censusPull <- censusPull |>
+      left_join(JWDPVals, by = "JWDP") |>
+      mutate(JWDP = times) |>
+      select(-times)}
+  
+  censusPull <- censusPull |>
+    mutate(across(any_of(c("PWGTP", "GASP", "AGEP", "GRPIP", "JWMNP")), as.double))
+  
+  yearKey <- paste0("y",year)
+  yearMeta <- varLists[[yearKey]]
+  
+  selectedCats <- names(catVars)[catVars]
+  
+  for (cat_var in selectedCats) {
+    cat_upper <- toupper(cat_var)
+    
+    meta_key <- if (cat_upper %in% names(yearMeta)) cat_upper else if (cat_var %in% names(yearMeta)) cat_var else NULL
+    
+    if (cat_upper %in% names(censusPull) && !is.null(meta_key)) {
+      valItems <- yearMeta[[meta_key]]$values$item
+      if (!is.null(valItems)) {
+        levelsVec <- as.character(names(valItems))
+        labelsVec <- unname(unlist(valItems))
+        
+        censusPull <- censusPull |>
+          mutate(!!cat_upper := factor(.data[[cat_upper]], levels = levelsVec, labels = labelsVec))
+      }
+    }
+  }
+  
+  class(censusPull) <- c("census", class(censusPull))
+  
+  return(censusPull)
+  
 }
 
 woah <-apiHarmer(key=censusKey,year=2021,
-                 agep=T,gasp=F,grpip=F,jwap=F,jwdp=F,jwmnp=F,
+                 agep=T,gasp=F,grpip=F,JWAP=T,JWDP=T,jwmnp=F,
                  sex=T,fer=F,hhl=F,sch=F,schl=F,geog="state",gsubset="02")
 
